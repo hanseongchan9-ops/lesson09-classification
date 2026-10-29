@@ -10,7 +10,7 @@ st.set_page_config(
 )
 
 # 데이터 URL 및 저장 경로 설정
-DATA_URL = "https://raw.githubusercontent.com/jsy1026/data/refs/heads/main/stroke.csv"
+DATA_URL = "https://raw.githubusercontent.com/hanseongchan9-ops/data/refs/heads/main/stroke.csv"
 SAVE_DIR = "내_기록"
 SAVE_FILE = os.path.join(SAVE_DIR, "user_notes.json")
 
@@ -51,7 +51,7 @@ except Exception as e:
     st.stop()
 
 # 앱 제목 및 소개
-st.title("🧠 뇌졸중 예측 실습실")
+st.title("뇌졸중 예측 실습실")
 st.markdown("본 실습실은 뇌졸중 예측 데이터를 확인하고 구조를 분석하는 공간입니다.")
 
 st.divider()
@@ -96,14 +96,13 @@ for col in df.columns:
 
 info_df = pd.DataFrame(columns_info)
 
+# 수정된 부분: st.column_config.TextColumn에서 placeholder 인자 제거
 edited_info_df = st.data_editor(
     info_df,
     hide_index=True,
     column_config={
         "열 이름": st.column_config.TextColumn(disabled=True),
-        "우리말 뜻": st.column_config.TextColumn(
-            placeholder="교재를 보고 우리말 뜻을 입력하세요"
-        ),
+        "우리말 뜻": st.column_config.TextColumn(),
         "값의 종류": st.column_config.TextColumn(disabled=True),
         "빈 값 개수": st.column_config.NumberColumn(disabled=True),
     },
