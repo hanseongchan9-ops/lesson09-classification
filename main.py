@@ -10,7 +10,7 @@ st.set_page_config(
 )
 
 # 데이터 URL 및 저장 경로 설정
-DATA_URL = "https://raw.githubusercontent.com/hanseongchan9-ops/data/refs/heads/main/stroke.csv"
+DATA_URL = "https://raw.githubusercontent.com/jsy1026/data/refs/heads/main/stroke.csv"
 SAVE_DIR = "내_기록"
 SAVE_FILE = os.path.join(SAVE_DIR, "user_notes.json")
 
