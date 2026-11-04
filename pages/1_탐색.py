@@ -32,13 +32,21 @@ st.markdown("수집된 뇌졸중 예측 데이터를 다양한 시각화와 통�
 
 st.divider()
 
-# 1. 나이와 평균 혈당의 분포를 히스토그램 두 개로 나란히
+# 1. 나이와 평균 혈당의 분포를 히스토그램 두 개로 나란히 (막대 간격과 테두리 추가로 가독성 개선)
 st.subheader("1. 나이 및 평균 혈당 분포")
 col1, col2 = st.columns(2)
 
 with col1:
     fig_age = px.histogram(
-        df, x="age", nbins=30, title="나이(age) 분포", labels={"age": "나이"}
+        df,
+        x="age",
+        nbins=30,
+        title="나이(age) 분포",
+        labels={"age": "나이"},
+    )
+    # 막대 테두리를 넣어 그래프가 명확히 구분되도록 설정
+    fig_age.update_traces(
+        marker_line_color="black", marker_line_width=1, opacity=0.85
     )
     st.plotly_chart(fig_age, use_container_width=True)
 
@@ -49,6 +57,9 @@ with col2:
         nbins=30,
         title="평균 혈당(avg_glucose_level) 분포",
         labels={"avg_glucose_level": "평균 혈당"},
+    )
+    fig_glucose.update_traces(
+        marker_line_color="black", marker_line_width=1, opacity=0.85
     )
     st.plotly_chart(fig_glucose, use_container_width=True)
 
@@ -125,6 +136,7 @@ with col5:
         title="고혈압 여부에 따른 뇌졸중 비율",
         labels={"hypertension": "고혈압 여부", "stroke_pct": "뇌졸중 비율 (%)"},
     )
+    fig_hyp.update_traces(marker_line_color="black", marker_line_width=1)
     st.plotly_chart(fig_hyp, use_container_width=True)
 
 with col6:
@@ -142,6 +154,7 @@ with col6:
         title="심장병 여부에 따른 뇌졸중 비율",
         labels={"heart_disease": "심장병 여부", "stroke_pct": "뇌졸중 비율 (%)"},
     )
+    fig_heart.update_traces(marker_line_color="black", marker_line_width=1)
     st.plotly_chart(fig_heart, use_container_width=True)
 
 st.divider()
