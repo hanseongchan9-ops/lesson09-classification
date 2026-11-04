@@ -69,7 +69,6 @@ selected_features = [
 st.divider()
 
 # 2. 데이터 분할 규칙 적용 (번호 순 정렬 -> 열 명씩 묶어 앞 3명 테스트, 나머지 7명 훈련)
-# id 등을 기준으로 정렬되어 있다고 가정하고 인덱스 순서대로 처리
 df_sorted = df_raw.sort_values(by="id").reset_index(drop=True)
 
 train_indices = []
@@ -81,7 +80,6 @@ for i in range(0, len(df_sorted), 10):
         test_indices.extend(chunk.index[:3])
         train_indices.extend(chunk.index[3:])
     else:
-        # 10개가 안 되는 마지막 묶음 처리
         test_indices.extend(chunk.index[: min(3, len(chunk))])
         if len(chunk) > 3:
             train_indices.extend(chunk.index[3:])
@@ -90,7 +88,6 @@ train_df = df_sorted.loc[train_indices].copy()
 test_df = df_sorted.loc[test_indices].copy()
 
 # 3. 전처리 (bmi 중앙값 처리 등)
-# bmi가 선택되었거나, 혹은 결정 경계 계산/중앙값 대체를 위해 훈련용의 bmi 중앙값 계산 필요
 bmi_median = train_df["bmi"].median()
 
 for dataset in [train_df, test_df]:
@@ -123,7 +120,7 @@ majority_class = y_train.mode()[0]
 baseline_train_acc = (y_train == majority_class).mean()
 baseline_test_acc = (y_test == majority_class).mean()
 
-# 5. 정확도 카드 표시 (큰 숫자 카드, 아래에 훈련/테스트 나란히)
+# 5. 정확도 카드 표시
 st.subheader("2. 모델 성능 비교 (정확도)")
 
 c1, c2, c3 = st.columns(3)
@@ -158,4 +155,85 @@ with c3:
         f"훈련 정확도: {baseline_train_acc * 100:.2f}% | 테스트 정확도: {baseline_test_acc * 100:.2f}%"
     )
 
-st.
+st.divider()
+
+# 6. 산점도 및 결정 경계 시각화
+st.subheader("3. 2차원 산점도 및 분류 경계 시각화")
+
+if len(selected_features) >= 2:
+    feat_x = selected_features[0]
+    feat_y = selected_features[1]
+    feat_x_kor = feature_mapping[feat_x]
+    feat_y_kor = feature_mapping[feat_y]
+
+    plot_df = test_df.copy()
+    plot_df["stroke_label"] = plot_df["stroke"].map({0: "아님 (0)", 1: "뇌졸중 (1)"})
+
+    fig = px.scatter(
+        plot_df,
+        x=feat_x,
+        y=feat_y,
+        color="stroke_label",
+        color_discrete_map={"아님 (0)": "#636EFA", "뇌졸중 (1)": "#EF553B"},
+        title=f"{feat_x_kor} vs {feat_y_kor} 테스트 데이터 산점도",
+        labels={
+            feat_x: feat_x_kor,
+            feat_y: feat_y_kor,
+            "stroke_label": "실제 뇌졸중 여부",
+        },
+    )
+
+    other_features_medians = {}
+    for f in selected_features:
+        if f != feat_x and f != feat_y:
+            other_features_medians[f] = train_df[f].median()
+
+    x_min, x_max = plot_df[feat_x].min(), plot_df[feat_x].max()
+    y_min, y_max = plot_df[feat_y].min(), plot_df[feat_y].max()
+    x_range = np.linspace(x_min, x_max, 100)
+    y_range = np.linspace(y_min, y_max, 100)
+    xx, yy = np.meshgrid(x_range, y_range)
+
+    grid_data = pd.DataFrame(
+        {feat_x: xx.ravel(), feat_y: yy.ravel()}
+    )
+    for f, val in other_features_medians.items():
+        grid_data[f] = val
+
+    grid_data = grid_data[selected_features]
+
+    try:
+        probs = lr_model.predict_proba(grid_data)[:, 1]
+        zz = probs.reshape(xx.shape)
+
+        fig.add_trace(
+            go.Contour(
+                z=zz,
+                x=x_range,
+                y=y_range,
+                showscale=False,
+                contours=dict(
+                    start=0.5, end=0.5, size=0, coloring="lines"
+                ),
+                line=dict(color="green", width=3),
+                name="로지스틱 회귀 경계 (0.5)",
+            )
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+        fixed_info_str = ", ".join(
+            [
+                f"{feature_mapping[f]}={val:.2f}"
+                for f, val in other_features_medians.items()
+            ]
+        )
+        if fixed_info_str:
+            st.info(
+                f"ℹ️ 가로축({feat_x_kor}), 세로축({feat_y_kor}) 외에 모델 계산에 사용된 나머지 속성들은 훈련용 데이터의 중앙값({fixed_info_str})으로 고정하여 계산되었습니다."
+            )
+        else:
+            st.info(
+                f"ℹ️ 선택한 두 개의 속성만으로 로지스틱 회귀 경계선이 계산되었습니다."
+            )
+
+        if np.all(probs < 0.5) or np.all
