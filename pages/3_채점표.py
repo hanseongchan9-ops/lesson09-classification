@@ -1,7 +1,5 @@
 import numpy as np
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
 import streamlit as st
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
@@ -9,29 +7,20 @@ from sklearn.tree import DecisionTreeClassifier
 
 # 페이지 설정
 st.set_page_config(
-    page_title="성능 높이기 - 뇌졸중 예측 실습실", page_icon="📈", layout="wide"
+    page_title="채점표 - 뇌졸중 예측 실습실", page_icon="📝", layout="wide"
 )
 
 # 데이터 URL 설정
 DATA_URL = "https://raw.githubusercontent.com/hanseongchan9-ops/data/refs/heads/main/stroke.csv"
 
-# 속성 한글 매핑 딕셔너리
-feature_mapping = {
-    "age": "나이",
-    "avg_glucose_level": "평균 혈당",
-    "bmi": "체질량지수",
-    "hypertension": "고혈압",
-    "heart_disease": "심장병",
-}
-reverse_feature_mapping = {v: k for k, v in feature_mapping.items()}
 
-
-# 데이터 로드 및 전처리 함수 (채점표 및 분류 모델 페이지와 동일한 방식)
+# 데이터 로드 및 전처리 함수 (분류 모델 페이지와 동일한 방식)
 @st.cache_data
-def get_performance_data():
+def get_model_data():
     df = pd.read_csv(DATA_URL, encoding="utf-8")
+    df = df.dropna(subset=["bmi"])  # 결측치 제거 예시 통일
 
-    # 범주형 변수 원핫 인코딩 등 전처리 수행
+    # 범주형 변수 원핫 인코딩 등 동일한 전처리 수행
     df_processed = pd.get_dummies(
         df,
         columns=[
@@ -44,85 +33,38 @@ def get_performance_data():
         drop_first=True,
     )
 
-    X_all = df_processed.drop(columns=["id", "stroke"])
-    y_all = df_processed["stroke"]
+    X = df_processed.drop(columns=["id", "stroke"])
+    y = df_processed["stroke"]
 
-    # 동일한 번호순 묶음 분할 규칙 적용 가능하도록 처리
-    df_sorted = df.sort_values(by="id").reset_index(drop=True)
-    df_processed_sorted = df_processed.sort_values(by="id").reset_index(
-        drop=True
+    X_train, X_test, y_train, y_test, train_idx, test_idx = train_test_split(
+        X,
+        y,
+        df.index,
+        test_size=0.2,
+        random_state=42,
+        stratify=y,
     )
-
-    train_indices = []
-    test_indices = []
-
-    for i in range(0, len(df_sorted), 10):
-        chunk = df_sorted.iloc[i : i + 10]
-        if len(chunk) >= 3:
-            test_indices.extend(chunk.index[:3])
-            train_indices.extend(chunk.index[3:])
-        else:
-            test_indices.extend(chunk.index[: min(3, len(chunk))])
-            if len(chunk) > 3:
-                train_indices.extend(chunk.index[3:])
-
-    return df, df_processed_sorted, train_indices, test_indices
+    return df, X_train, X_test, y_train, y_test, test_idx
 
 
 try:
-    df_raw, df_processed, train_indices, test_indices = get_performance_data()
+    df_raw, X_train, X_test, y_train, y_test, test_idx = get_model_data()
 except Exception as e:
     st.error(f"데이터를 불러오는 중 오류가 발생했습니다: {e}")
     st.stop()
 
-# 페이지 제목
-st.title("📈 뇌졸중 예측 모델 성능 높이기 (클래스 가중치 조정)")
-st.markdown(
-    "데이터 불균형 문제를 해결하기 위해 가중치를 맞추기 전과 맞춘 후의 모델 성능 변화를 비교하는 공간입니다."
-)
+# 모델 학습
+lr_model = LogisticRegression(max_iter=1000, random_state=42)
+lr_model.fit(X_train, y_train)
+lr_pred = lr_model.predict(X_test)
 
-st.divider()
-
-# 1. 입력 속성 선택 UI (분류 모델 페이지와 동일, 기본값: age, avg_glucose_level, hypertension, heart_disease)
-st.subheader("1. 입력 속성 선택")
-default_features_kor = ["나이", "평균 혈당", "고혈압", "심장병"]
-all_features_kor = list(feature_mapping.values())
-
-selected_features_kor = st.multiselect(
-    "학습에 사용할 속성을 골라주세요 (2개 이상 선택):",
-    options=all_features_kor,
-    default=default_features_kor,
-)
-
-if len(selected_features_kor) < 2:
-    st.warning("⚠️ 속성을 **2개 이상** 선택해 주세요.")
-    st.stop()
-
-selected_features = [
-    reverse_feature_mapping[feat] for feat in selected_features_kor
-]
-
-st.divider()
-
-# 데이터 세트 구성
-train_df_raw = df_raw.loc[train_indices].copy()
-test_df_raw = df_raw.loc[test_indices].copy()
-
-# bmi 결측치 훈련용 중앙값으로 채우기
-bmi_median = train_df_raw["bmi"].median()
-train_df_raw["bmi"] = train_df_raw["bmi"].fillna(bmi_median)
-test_df_raw["bmi"] = test_df_raw["bmi"].fillna(bmi_median)
-
-# 모델 학습용 데이터 추출 (선택된 피처 + 원핫 인코딩된 범주형 피처 전체 활용)
-X_train = df_processed.loc[train_indices].drop(columns=["id", "stroke"])
-y_train = df_processed.loc[train_indices]["stroke"]
-
-X_test = df_processed.loc[test_indices].drop(columns=["id", "stroke"])
-y_test = df_processed.loc[test_indices]["stroke"]
+dt_model = DecisionTreeClassifier(random_state=42)
+dt_model.fit(X_train, y_train)
+dt_pred = dt_model.predict(X_test)
 
 
-# 혼동행렬 및 지표 계산 헬퍼 함수
-def get_metrics_and_counts(y_true, y_pred):
+# 혼동행렬 지표 계산 함수 (행: 실제, 열: 예측)
+def calculate_confusion_matrix_metrics(y_true, y_pred):
     y_true = np.array(y_true)
     y_pred = np.array(y_pred)
 
@@ -133,8 +75,11 @@ def get_metrics_and_counts(y_true, y_pred):
 
     total = tp + fp + fn + tn
     accuracy = (tp + tn) / total if total > 0 else 0.0
+
+    # 재현율 분모: 실제 뇌졸중인 사람 수 (tp + fn)
     recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
 
+    # 정밀도 분모: 뇌졸중이라 예측한 사람 수 (tp + fp)
     if (tp + fp) > 0:
         precision = tp / (tp + fp)
         f1 = (
@@ -147,256 +92,208 @@ def get_metrics_and_counts(y_true, y_pred):
     else:
         precision_str = "계산할 수 없음"
         f1_str = "계산할 수 없음"
+        precision = 0.0
 
     return {
         "tp": tp,
         "fp": fp,
         "fn": fn,
         "tn": tn,
-        "accuracy": f"{accuracy:.4f}",
-        "recall": f"{recall:.4f}",
-        "precision": precision_str,
-        "f1": f1_str,
+        "accuracy": accuracy,
+        "recall": recall,
+        "precision_val": precision,
+        "precision_str": precision_str,
+        "f1_str": f1_str,
     }
 
 
-# 2. 모델 학습 (가중치 전 / 후)
-# 로지스틱 회귀
-lr_before = LogisticRegression(
-    max_iter=1000, random_state=42, class_weight=None
+lr_metrics = calculate_confusion_matrix_metrics(y_test, lr_pred)
+dt_metrics = calculate_confusion_matrix_metrics(y_test, dt_pred)
+
+# 다수 클래스 기준 모델 (훈련용에서 많은 쪽으로만 답하는 모델) 예측
+majority_class = y_train.mode()[0]
+baseline_pred = np.full_like(y_test, majority_class)
+base_metrics = calculate_confusion_matrix_metrics(y_test, baseline_pred)
+
+# 페이지 제목
+st.title("📝 분류 모델 채점표 (혼동행렬 및 성능 평가)")
+st.markdown(
+    "테스트 데이터를 바탕으로 모델의 성능을 혼동행렬과 평가지표를 통해 다각도로 채점하는 공간입니다."
 )
-lr_before.fit(X_train, y_train)
-lr_before_pred = lr_before.predict(X_test)
 
-lr_after = LogisticRegression(
-    max_iter=1000, random_state=42, class_weight="balanced"
+st.divider()
+
+# 테스트 데이터 정보 표시
+test_total_count = len(y_test)
+test_stroke_count = int(y_test.sum())
+st.markdown(
+    f"**테스트용 사람 수:** {test_total_count}명 | **그중 뇌졸중인 사람 수:** {test_stroke_count}명"
 )
-lr_after.fit(X_train, y_train)
-lr_after_pred = lr_after.predict(X_test)
 
-# 의사결정트리
-dt_before = DecisionTreeClassifier(random_state=42, class_weight=None)
-dt_before.fit(X_train, y_train)
-dt_before_pred = dt_before.predict(X_test)
+st.divider()
 
-dt_after = DecisionTreeClassifier(random_state=42, class_weight="balanced")
-dt_after.fit(X_train, y_train)
-dt_after_pred = dt_after.predict(X_test)
-
-# 지표 계산
-lr_b_m = get_metrics_and_counts(y_test, lr_before_pred)
-lr_a_m = get_metrics_and_counts(y_test, lr_after_pred)
-dt_b_m = get_metrics_and_counts(y_test, dt_before_pred)
-dt_a_m = get_metrics_and_counts(y_test, dt_after_pred)
-
-st.subheader("2. 가중치 조정 전·후 혼동행렬 및 성능 비교")
+# 1. 혼동행렬 2x2 표 표시 (각 모델별)
+st.subheader("1. 모델별 혼동행렬 (2×2 표)")
 
 col1, col2 = st.columns(2)
 
 with col1:
-    st.markdown("##### 로지스틱 회귀 (확률로 답하는 모델)")
-    lr_comp_df = pd.DataFrame(
-        {
-            "평가지표": ["정확도", "재현율", "정밀도", "F1 스코어", "찾은 환자(TP)", "놓친 환자(FN)", "헛짚은 사람(FP)", "정상 맞춤(TN)"],
-            "가중치 조정 전": [
-                lr_b_m["accuracy"],
-                lr_b_m["recall"],
-                lr_b_m["precision"],
-                lr_b_m["f1"],
-                lr_b_m["tp"],
-                lr_b_m["fn"],
-                lr_b_m["fp"],
-                lr_b_m["tn"],
+    st.markdown("##### 로지스틱 회귀(확률로 답하는 모델)")
+    lr_cm_df = pd.DataFrame(
+        [
+            [
+                f"TN: {lr_metrics['tn']}",
+                f"FP: {lr_metrics['fp']}",
+                f"합계: {lr_metrics['tn'] + lr_metrics['fp']}",
             ],
-            "가중치 조정 후(balanced)": [
-                lr_a_m["accuracy"],
-                lr_a_m["recall"],
-                lr_a_m["precision"],
-                lr_a_m["f1"],
-                lr_a_m["tp"],
-                lr_a_m["fn"],
-                lr_a_m["fp"],
-                lr_a_m["tn"],
+            [
+                f"FN: {lr_metrics['fn']}",
+                f"TP: {lr_metrics['tp']}",
+                f"합계: {lr_metrics['fn'] + lr_metrics['tp']}",
             ],
-        }
+            [
+                f"합계: {lr_metrics['tn'] + lr_metrics['fn']}",
+                f"합계: {lr_metrics['fp'] + lr_metrics['tp']}",
+                f"전체: {test_total_count}",
+            ],
+        ],
+        index=["실제 정상 (0)", "실제 뇌졸중 (1)", "합계"],
+        columns=["예측 정상 (0)", "예측 뇌졸중 (1)", "합계"],
     )
-    st.dataframe(lr_comp_df.set_index("평가지표"), use_container_width=True)
-
-    # 환자 수 변화 요약 문구
-    st.info(
-        f"💡 **로지스틱 회귀 변화 요약**: 찾아낸 환자 수 {lr_b_m['tp']}명 $\\rightarrow$ {lr_a_m['tp']}명 | "
-        f"놓친 환자 수 {lr_b_m['fn']}명 $\\rightarrow$ {lr_a_m['fn']}명 | "
-        f"헛짚은 사람 수 {lr_b_m['fp']}명 $\\rightarrow$ {lr_a_m['fp']}명으로 바뀌었습니다."
-    )
+    st.dataframe(lr_cm_df, use_container_width=True)
 
 with col2:
-    st.markdown("##### 의사결정트리 (질문으로 답하는 모델)")
-    dt_comp_df = pd.DataFrame(
-        {
-            "평가지표": ["정확도", "재현율", "정밀도", "F1 스코어", "찾은 환자(TP)", "놓친 환자(FN)", "헛짚은 사람(FP)", "정상 맞춤(TN)"],
-            "가중치 조정 전": [
-                dt_b_m["accuracy"],
-                dt_b_m["recall"],
-                dt_b_m["precision"],
-                dt_b_m["f1"],
-                dt_b_m["tp"],
-                dt_b_m["fn"],
-                dt_b_m["fp"],
-                dt_b_m["tn"],
+    st.markdown("##### 의사결정트리(질문으로 답하는 모델)")
+    dt_cm_df = pd.DataFrame(
+        [
+            [
+                f"TN: {dt_metrics['tn']}",
+                f"FP: {dt_metrics['fp']}",
+                f"합계: {dt_metrics['tn'] + dt_metrics['fp']}",
             ],
-            "가중치 조정 후(balanced)": [
-                dt_a_m["accuracy"],
-                dt_a_m["recall"],
-                dt_a_m["precision"],
-                dt_a_m["f1"],
-                dt_a_m["tp"],
-                dt_a_m["fn"],
-                dt_a_m["fp"],
-                dt_a_m["tn"],
+            [
+                f"FN: {dt_metrics['fn']}",
+                f"TP: {dt_metrics['tp']}",
+                f"합계: {dt_metrics['fn'] + dt_metrics['tp']}",
             ],
-        }
+            [
+                f"합계: {dt_metrics['tn'] + dt_metrics['fn']}",
+                f"합계: {dt_metrics['fp'] + dt_metrics['tp']}",
+                f"전체: {test_total_count}",
+            ],
+        ],
+        index=["실제 정상 (0)", "실제 뇌졸중 (1)", "합계"],
+        columns=["예측 정상 (0)", "예측 뇌졸중 (1)", "합계"],
     )
-    st.dataframe(dt_comp_df.set_index("평가지표"), use_container_width=True)
-
-    st.info(
-        f"💡 **의사결정트리 변화 요약**: 찾아낸 환자 수 {dt_b_m['tp']}명 $\\rightarrow$ {dt_a_m['tp']}명 | "
-        f"놓친 환자 수 {dt_b_m['fn']}명 $\\rightarrow$ {dt_a_m['fn']}명 | "
-        f"헛짚은 사람 수 {dt_b_m['fp']}명 $\\rightarrow$ {dt_a_m['fp']}명으로 바뀌었습니다."
-    )
+    st.dataframe(dt_cm_df, use_container_width=True)
 
 st.divider()
 
-# 3. 산점도 및 결정 경계 비교 시각화 (2차원 또는 3차원)
-st.subheader("3. 로지스틱 회귀 가중치 조정 전·후 0.5 경계선 비교 산점도")
+# 2. 성능 지표 비교 표 (정확도, 재현율, 정밀도, F1) + 기준 모델 포함
+st.subheader("2. 모델별 성능 지표 비교 표")
 
-if len(selected_features) >= 2:
-    plot_df = test_df_raw.copy()
-    plot_df["stroke_label"] = plot_df["stroke"].map({0: "아님 (0)", 1: "뇌졸중 (1)"})
+summary_table = pd.DataFrame(
+    [
+        {
+            "모델명": "로지스틱 회귀(확률로 답하는 모델)",
+            "정확도": f"{lr_metrics['accuracy']:.4f}",
+            "재현율": f"{lr_metrics['recall']:.4f}",
+            "정밀도": lr_metrics["precision_str"],
+            "F1 스코어": lr_metrics["f1_str"],
+        },
+        {
+            "모델명": "의사결정트리(질문으로 답하는 모델)",
+            "정확도": f"{dt_metrics['accuracy']:.4f}",
+            "재현율": f"{dt_metrics['recall']:.4f}",
+            "정밀도": dt_metrics["precision_str"],
+            "F1 스코어": dt_metrics["f1_str"],
+        },
+        {
+            "모델명": "훈련용에서 많은 쪽으로만 답하는 모델",
+            "정확도": f"{base_metrics['accuracy']:.4f}",
+            "재현율": f"{base_metrics['recall']:.4f}",
+            "정밀도": base_metrics["precision_str"],
+            "F1 스코어": base_metrics["f1_str"],
+        },
+    ]
+)
+st.dataframe(summary_table.set_index("모델명"), use_container_width=True)
 
-    if len(selected_features) == 2:
-        # 2차원 산점도 및 경계선
-        feat_x = selected_features[0]
-        feat_y = selected_features[1]
-        feat_x_kor = feature_mapping[feat_x]
-        feat_y_kor = feature_mapping[feat_y]
+st.divider()
 
-        fig = px.scatter(
-            plot_df,
-            x=feat_x,
-            y=feat_y,
-            color="stroke_label",
-            color_discrete_map={"아님 (0)": "#636EFA", "뇌졸중 (1)": "#EF553B"},
-            title=f"{feat_x_kor} vs {feat_y_kor} 산점도 및 0.5 경계선 비교",
-            labels={
-                feat_x: feat_x_kor,
-                feat_y: feat_y_kor,
-                "stroke_label": "실제 뇌졸중 여부",
-            },
-        )
+# 3. 오류 분석 목록 (놓친 환자 및 헛짚은 사람)
+st.subheader("3. 오류 분석 세부 목록")
 
-        # 2개 외의 속성은 중앙값으로 고정
-        other_medians = {
-            f: train_df_raw[f].median()
-            for f in selected_features
-            if f != feat_x and f != feat_y
+# 모델 선택 UI
+selected_model_name = st.selectbox(
+    "목록을 확인할 모델을 선택하세요:",
+    [
+        "로지스틱 회귀(확률로 답하는 모델)",
+        "의사결정트리(질문으로 답하는 모델)",
+    ],
+)
+
+chosen_pred = lr_pred if "로지스틱" in selected_model_name else dt_pred
+chosen_metrics = lr_metrics if "로지스틱" in selected_model_name else dt_metrics
+
+# 데이터프레임 매핑을 위해 테스트셋 원본 데이터 추출
+test_df_subset = df_raw.loc[test_idx].copy()
+test_df_subset["y_true"] = y_test.values
+test_df_subset["y_pred"] = chosen_pred
+
+# 왼쪽: 실제 뇌졸중인데 아니라고 예측한 사람 (놓친 환자 = FN)
+fn_df = test_df_subset[
+    (test_df_subset["y_true"] == 1) & (test_df_subset["y_pred"] == 0)
+].copy()
+fn_df = fn_df.sort_values(by="age", ascending=False)
+
+# 오른쪽: 아닌데 뇌졸중이라고 예측한 사람 (헛짚은 사람 = FP)
+fp_df = test_df_subset[
+    (test_df_subset["y_true"] == 0) & (test_df_subset["y_pred"] == 1)
+].copy()
+fp_df = fp_df.sort_values(by="age", ascending=False)
+
+col_left, col_right = st.columns(2)
+
+with col_left:
+    fn_total_len = len(fn_df)
+    st.markdown(
+        f"##### 📉 놓친 환자 (실제 1, 예측 0) [전체 인원수: {fn_total_len}명]"
+    )
+    display_fn = fn_df.head(20).reset_index(drop=True)
+    display_fn.index = display_fn.index + 1  # 1부터 번호 시작
+    display_fn_show = display_fn[
+        ["age", "avg_glucose_level", "hypertension", "heart_disease"]
+    ].rename(
+        columns={
+            "age": "나이",
+            "avg_glucose_level": "평균 혈당",
+            "hypertension": "고혈압 여부",
+            "heart_disease": "심장병 여부",
         }
+    )
+    st.dataframe(display_fn_show, use_container_width=True)
 
-        x_min, x_max = plot_df[feat_x].min(), plot_df[feat_x].max()
-        y_min, y_max = plot_df[feat_y].min(), plot_df[feat_y].max()
-        xx, yy = np.meshgrid(
-            np.linspace(x_min, x_max, 100), np.linspace(y_min, y_max, 100)
-        )
+with col_right:
+    fp_total_len = len(fp_df)
+    st.markdown(
+        f"##### 📈 헛짚은 사람 (실제 0, 예측 1) [전체 인원수: {fp_total_len}명]"
+    )
+    display_fp = fp_df.head(20).reset_index(drop=True)
+    display_fp.index = display_fp.index + 1  # 1부터 번호 시작
+    display_fp_show = display_fp[
+        ["age", "avg_glucose_level", "hypertension", "heart_disease"]
+    ].rename(
+        columns={
+            "age": "나이",
+            "avg_glucose_level": "평균 혈당",
+            "hypertension": "고혈압 여부",
+            "heart_disease": "심장병 여부",
+        }
+    )
+    st.dataframe(display_fp_show, use_container_width=True)
 
-        grid_raw = pd.DataFrame({feat_x: xx.ravel(), feat_y: yy.ravel()})
-        for f, val in other_medians.items():
-            grid_raw[f] = val
-
-        # 원본 피처프레임에 맞춰 더미 변수 처리 등 정렬
-        grid_processed = pd.get_dummies(
-            grid_raw,
-            columns=[
-                col
-                for col in [
-                    "gender",
-                    "ever_married",
-                    "work_type",
-                    "Residence_type",
-                    "smoking_status",
-                ]
-                if col in grid_raw.columns
-            ],
-        )
-        grid_processed = grid_processed.reindex(
-            columns=X_train.columns, fill_value=0
-        )
-
-        # 조정 전 경계선 (0.5)
-        probs_before = lr_before.predict_proba(grid_processed)[:, 1]
-        zz_b = probs_before.reshape(xx.shape)
-        fig.add_trace(
-            go.Contour(
-                z=zz_b,
-                x=np.linspace(x_min, x_max, 100),
-                y=np.linspace(y_min, y_max, 100),
-                showscale=False,
-                contours=dict(start=0.5, end=0.5, size=0, coloring="lines"),
-                line=dict(color="blue", width=3, dash="dash"),
-                name="조정 전 경계선 (0.5)",
-            )
-        )
-
-        # 조정 후 경계선 (0.5)
-        probs_after = lr_after.predict_proba(grid_processed)[:, 1]
-        zz_a = probs_after.reshape(xx.shape)
-        fig.add_trace(
-            go.Contour(
-                z=zz_a,
-                x=np.linspace(x_min, x_max, 100),
-                y=np.linspace(y_min, y_max, 100),
-                showscale=False,
-                contours=dict(start=0.5, end=0.5, size=0, coloring="lines"),
-                line=dict(color="orange", width=3),
-                name="조정 후(balanced) 경계선 (0.5)",
-            )
-        )
-
-        st.plotly_chart(fig, use_container_width=True)
-        st.info(
-            "ℹ️ 파란색 점선은 가중치 조정 전, 주황색 실선은 가중치 조정 후의 로지스틱 회귀 0.5 결정 경계선입니다."
-        )
-
-    else:
-        # 속성을 3개 이상 고른 경우: 3차원 산점도 및 평면 비교
-        feat_x, feat_y, feat_z = (
-            selected_features[0],
-            selected_features[1],
-            selected_features[2],
-        )
-        fx_k, fy_k, fz_k = (
-            feature_mapping[feat_x],
-            feature_mapping[feat_y],
-            feature_mapping[feat_z],
-        )
-
-        fig = px.scatter_3d(
-            plot_df,
-            x=feat_x,
-            y=feat_y,
-            z=feat_z,
-            color="stroke_label",
-            color_discrete_map={"아님 (0)": "#636EFA", "뇌졸중 (1)": "#EF553B"},
-            title=f"{fx_k}, {fy_k}, {fz_k} 3차원 산점도 및 결정 평면 비교",
-            labels={
-                feat_x: fx_k,
-                feat_y: fy_k,
-                feat_z: fz_k,
-                "stroke_label": "실제 뇌졸중 여부",
-            },
-        )
-
-        st.plotly_chart(fig, use_container_width=True)
-        st.info(
-            f"ℹ️ 선택한 속성 중 상위 3개({fx_k}, {fy_k}, {fz_k})를 기준으로 3차원 산점도를 구성하였습니다. 마우스로 회전하여 데이터를 살펴보세요."
-        )
-else:
-    st.warning("산점도를 그리려면 속성을 2개 이상 선택해 주세요.")
+# 혼동행렬의 FN, FP 칸과 일치 여부 확인 문구
+st.info(
+    f"확인: 위 목록의 인원 수(놓친 환자 {fn_total_len}명, 헛짚은 사람 {fp_total_len}명)는 선택한 모델 혼동행렬의 FN({chosen_metrics['fn']}) 및 FP({chosen_metrics['fp']}) 칸의 사람 수와 정확히 일치합니다."
+)
