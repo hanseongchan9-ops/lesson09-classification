@@ -36,7 +36,6 @@ def get_model_data():
     X = df_processed.drop(columns=["id", "stroke"])
     y = df_processed["stroke"]
 
-    # 원본 df와 분할된 데이터 반환을 위해 인덱스 활용 가능하도록 구성
     X_train, X_test, y_train, y_test, train_idx, test_idx = train_test_split(
         X,
         y,
@@ -111,7 +110,7 @@ def calculate_confusion_matrix_metrics(y_true, y_pred):
 lr_metrics = calculate_confusion_matrix_metrics(y_test, lr_pred)
 dt_metrics = calculate_confusion_matrix_metrics(y_test, dt_pred)
 
-# 다수 클래스 기준 모델 (훈련용에서 많은 쪽으로만 답하는 모델) 예측: 훈련용에서 다수 클래스 파악
+# 다수 클래스 기준 모델 (훈련용에서 많은 쪽으로만 답하는 모델) 예측
 majority_class = y_train.mode()[0]
 baseline_pred = np.full_like(y_test, majority_class)
 base_metrics = calculate_confusion_matrix_metrics(y_test, baseline_pred)
@@ -258,7 +257,9 @@ col_left, col_right = st.columns(2)
 
 with col_left:
     fn_total_len = len(fn_df)
-    st.markdown(f"##### 📉 놓친 환자 (실제 1, 예측 0) [전체 인원수: {fn_total_len명}]")
+    st.markdown(
+        f"##### 📉 놓친 환자 (실제 1, 예측 0) [전체 인원수: {fn_total_len}명]"
+    )
     display_fn = fn_df.head(20).reset_index(drop=True)
     display_fn.index = display_fn.index + 1  # 1부터 번호 시작
     display_fn_show = display_fn[
@@ -275,7 +276,9 @@ with col_left:
 
 with col_right:
     fp_total_len = len(fp_df)
-    st.markdown(f"##### 📈 헛짚은 사람 (실제 0, 예측 1) [전체 인원수: {fp_total_len명}]")
+    st.markdown(
+        f"##### 📈 헛짚은 사람 (실제 0, 예측 1) [전체 인원수: {fp_total_len}명]"
+    )
     display_fp = fp_df.head(20).reset_index(drop=True)
     display_fp.index = display_fp.index + 1  # 1부터 번호 시작
     display_fp_show = display_fp[
