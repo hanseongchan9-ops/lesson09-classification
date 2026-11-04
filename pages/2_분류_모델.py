@@ -236,4 +236,69 @@ if len(selected_features) >= 2:
                 f"ℹ️ 선택한 두 개의 속성만으로 로지스틱 회귀 경계선이 계산되었습니다."
             )
 
-        if np.all(probs < 0.5) or np.all
+        if np.all(probs < 0.5) or np.all(probs > 0.5):
+            st.warning(
+                "⚠️ 로지스틱 회귀의 0.5 기준선이 현재 산점도 범위 밖에 위치해 있어 화면에 나타나지 않을 수 있습니다."
+            )
+
+    except Exception as ex:
+        st.error(f"결정 경계선 그리기 중 오류 발생: {ex}")
+        st.plotly_chart(fig, use_container_width=True)
+
+st.divider()
+
+# 7. 의사결정트리 구조 시각화
+st.subheader("4. 의사결정트리 구조 (질문 가지 그림)")
+
+
+def get_custom_tree_dot(tree_model, feature_names, feature_map_dict):
+    from sklearn.tree import export_graphviz
+
+    feature_names_kor = [feature_map_dict.get(f, f) for f in feature_names]
+    dot_data = export_graphviz(
+        tree_model,
+        out_file=None,
+        feature_names=feature_names_kor,
+        class_names=["아님", "뇌졸중"],
+        filled=True,
+        rounded=True,
+        special_characters=True,
+        precision=2,
+    )
+    return dot_data
+
+
+try:
+    dot_string = get_custom_tree_dot(dt_model, selected_features, feature_mapping)
+    st.graphviz_chart(dot_string)
+except Exception as e:
+    st.info("트리 시각화를 생성하는 중입니다.")
+
+n_nodes = dt_model.tree_.node_count
+is_leaf = dt_model.tree_.children_left == -1
+leaf_nodes = np.where(is_leaf)[0]
+total_leaves = len(leaf_nodes)
+
+leaf_values = dt_model.tree_.value[leaf_nodes]
+negative_leaves = sum(
+    1 for val in leaf_values if np.argmax(val[0]) == 0
+)
+
+used_features_idx = set(dt_model.tree_.feature)
+used_features_idx.discard(-2)
+used_feature_names_kor = [
+    feature_mapping[selected_features[i]]
+    for i in used_features_idx
+    if i < len(selected_features)
+]
+used_features_str = (
+    ", ".join(used_feature_names_kor) if used_feature_names_kor else "없음"
+)
+
+st.markdown(
+    f"""
+- **답을 내는 마디(리프 노드)의 총 개수:** {total_leaves}개
+- **그중 '아님'이라고 답하는 마디 개수:** {negative_leaves}개
+- **고른 속성 가운데 이 나무가 실제로 물은 속성:** {used_features_str}
+"""
+)
